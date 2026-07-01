@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+use Illuminate\Contracts\Queue\ShouldQueue;
+
 arch()->preset()->php();
 arch()->preset()->strict();
 arch()->preset()->laravel();
@@ -15,6 +17,6 @@ arch('controllers')
 
 arch('notifications are queued')
     ->expect('App\Notifications')
-    ->toImplement(Illuminate\Contracts\Queue\ShouldQueue::class);
+    ->toImplement(ShouldQueue::class);
 
 //
