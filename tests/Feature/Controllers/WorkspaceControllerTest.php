@@ -70,7 +70,7 @@ it('validates the workspace name', function (): void {
     expect($user->workspaces()->count())->toBe(0);
 });
 
-it('allows workspaces to share the same name', function (): void {
+it('rejects a workspace name already owned by the same user', function (): void {
     $user = User::factory()->create();
     Workspace::factory()->for($user, 'owner')->create(['name' => 'Test Workspace']);
 
@@ -78,14 +78,31 @@ it('allows workspaces to share the same name', function (): void {
         'name' => 'Test Workspace',
     ]);
 
+    $response->assertSessionHasErrors('name');
+
+    expect($user->workspaces()->where('name', 'Test Workspace')->count())->toBe(1);
+});
+
+it('allows different users to have the same workspace name', function (): void {
+    $otherUser = User::factory()->create();
+    Workspace::factory()->for($otherUser, 'owner')->create(['name' => 'Test Workspace']);
+
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->post(route('workspace.store'), [
+        'name' => 'Test Workspace',
+    ]);
+
     $response->assertSessionHasNoErrors();
 
-    expect($user->workspaces()->where('name', 'Test Workspace')->count())->toBe(2);
+    expect($user->workspaces()->where('name', 'Test Workspace')->count())->toBe(1);
 });
 
 it('generates a unique slug when the name is already taken', function (): void {
+    $otherUser = User::factory()->create();
+    Workspace::factory()->for($otherUser, 'owner')->create(['name' => 'Test Workspace', 'slug' => 'test-workspace']);
+
     $user = User::factory()->create();
-    Workspace::factory()->for($user, 'owner')->create(['name' => 'Test Workspace', 'slug' => 'test-workspace']);
 
     $response = $this->actingAs($user)->post(route('workspace.store'), [
         'name' => 'Test Workspace',
@@ -178,6 +195,35 @@ it('rejects a slug already taken by another workspace', function (): void {
     $response->assertSessionHasErrors('slug');
 
     expect($workspace->refresh()->slug)->toBe('hashane');
+});
+
+it('rejects updating a workspace to a name already owned by the same user', function (): void {
+    $user = User::factory()->create();
+    Workspace::factory()->for($user, 'owner')->create(['name' => 'Taken', 'slug' => 'taken']);
+    $workspace = Workspace::factory()->for($user, 'owner')->create(['name' => 'Hashane', 'slug' => 'hashane']);
+
+    $response = $this->actingAs($user)->patch(route('workspace.update', $workspace), [
+        'name' => 'Taken',
+        'slug' => 'hashane',
+    ]);
+
+    $response->assertSessionHasErrors('name');
+
+    expect($workspace->refresh()->name)->toBe('Hashane');
+});
+
+it('allows updating a workspace while keeping its own name', function (): void {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user, 'owner')->create(['name' => 'Hashane', 'slug' => 'hashane']);
+
+    $response = $this->actingAs($user)->patch(route('workspace.update', $workspace), [
+        'name' => 'Hashane',
+        'slug' => 'nuno-maduro',
+    ]);
+
+    $response->assertRedirectBack()->assertSessionHasNoErrors();
+
+    expect($workspace->refresh()->slug)->toBe('nuno-maduro');
 });
 
 it('can delete a workspace', function (): void {

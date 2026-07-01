@@ -77,7 +77,7 @@ it('infers the slug from the name and ignores a provided slug', function (): voi
     expect($workspace->channels()->first()->slug)->toBe('product-updates');
 });
 
-it('generates a unique slug per workspace when the name is taken', function (): void {
+it('rejects a channel name already used in the same workspace', function (): void {
     $user = User::factory()->create();
     $workspace = Workspace::factory()->for($user, 'owner')->create();
     Channel::factory()->for($workspace)->create(['name' => 'general', 'slug' => 'general']);
@@ -86,9 +86,25 @@ it('generates a unique slug per workspace when the name is taken', function (): 
         'name' => 'general',
     ]);
 
+    $response->assertSessionHasErrors('name');
+
+    expect($workspace->channels()->count())->toBe(1);
+});
+
+it('allows the same channel name in a different workspace', function (): void {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user, 'owner')->create();
+    Channel::factory()->for($workspace)->create(['name' => 'general', 'slug' => 'general']);
+
+    $otherWorkspace = Workspace::factory()->for($user, 'owner')->create();
+
+    $response = $this->actingAs($user)->post(route('channel.store', $otherWorkspace), [
+        'name' => 'general',
+    ]);
+
     $response->assertSessionHasNoErrors();
 
-    expect($workspace->channels()->where('slug', 'general-2')->exists())->toBeTrue();
+    expect($otherWorkspace->channels()->where('name', 'general')->count())->toBe(1);
 });
 
 it('validates the channel name', function (): void {
@@ -117,6 +133,21 @@ it('can update a channel name', function (): void {
 
     expect($channel->refresh()->name)->toBe('random')
         ->and($channel->slug)->toBe('random');
+});
+
+it('rejects updating a channel to a name already used in the workspace', function (): void {
+    $user = User::factory()->create();
+    $workspace = Workspace::factory()->for($user, 'owner')->create();
+    Channel::factory()->for($workspace)->create(['name' => 'general', 'slug' => 'general']);
+    $channel = Channel::factory()->for($workspace)->create(['name' => 'random', 'slug' => 'random']);
+
+    $response = $this->actingAs($user)->patch(route('channel.update', [$workspace, $channel]), [
+        'name' => 'general',
+    ]);
+
+    $response->assertSessionHasErrors('name');
+
+    expect($channel->refresh()->name)->toBe('random');
 });
 
 it('can delete a channel', function (): void {
